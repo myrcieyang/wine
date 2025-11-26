@@ -1,0 +1,570 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>好酒决策树可视化</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #3498db;
+            --success-color: #27ae60;
+            --fail-color: #e74c3c;
+            --bg-color: #f4f7f6;
+            --card-bg: #ffffff;
+            --node-bg: #ecf0f1;
+            --border-radius: 12px;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--primary-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            font-weight: 300;
+            letter-spacing: 1px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* 可视化区域 */
+        .viz-panel {
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+            padding: 40px 20px;
+            position: relative;
+            height: 400px; /* 固定高度用于动画 */
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .decision-path {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+            height: 100px;
+            margin-top: 50px;
+        }
+
+        /* 连接线 */
+        .decision-path::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50px;
+            right: 50px;
+            height: 4px;
+            background: #e0e0e0;
+            z-index: -1;
+            transform: translateY(-50%);
+        }
+
+        .node {
+            background: var(--card-bg);
+            border: 2px solid var(--primary-color);
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-weight: bold;
+            text-align: center;
+            min-width: 120px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            position: relative;
+            transition: transform 0.3s;
+        }
+
+        .node .label {
+            font-size: 12px;
+            color: #7f8c8d;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .node .condition {
+            font-size: 16px;
+            color: var(--accent-color);
+        }
+
+        .node.start { border-color: var(--primary-color); }
+        .node.final { border-color: var(--success-color); background-color: #e8f8f5; }
+        
+        .reject-zone {
+            border-top: 2px dashed var(--fail-color);
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--fail-color);
+            font-weight: bold;
+            opacity: 0.5;
+            margin-top: auto;
+        }
+
+        /* 数据点 */
+        .dot {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            position: absolute;
+            border: 2px solid white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .dot:hover {
+            transform: scale(1.2) !important;
+            z-index: 100;
+        }
+
+        /* 控制区 */
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background-color: var(--accent-color);
+            color: white;
+        }
+        .btn-primary:hover { background-color: #2980b9; }
+        .btn-primary:disabled { background-color: #bdc3c7; cursor: not-allowed; }
+
+        .btn-reset {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        .btn-reset:hover { background-color: #34495e; }
+
+        /* 数据表格 */
+        .data-panel {
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background-color: #f8f9fa;
+            color: var(--primary-color);
+        }
+
+        input[type="number"] {
+            width: 70px;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-pending { background: #eee; color: #666; }
+        .status-good { background: #d4efdf; color: #27ae60; }
+        .status-rejected { background: #fadbd8; color: #c0392b; }
+
+        /* 提示框 */
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 1000;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 768px) {
+            .decision-path {
+                flex-direction: column;
+                height: auto;
+                gap: 30px;
+                margin-top: 20px;
+            }
+            .decision-path::before {
+                width: 4px;
+                height: 100%;
+                left: 50%;
+                top: 0;
+                transform: translateX(-50%);
+            }
+            .viz-panel {
+                height: 600px;
+            }
+            .reject-zone {
+                display: none; /* 移动端简化显示 */
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <div class="container">
+        <div style="text-align: center;">
+            <h1>🍷 "好酒"决策树可视化</h1>
+            <p style="color: #7f8c8d;">筛选标准：酒精度 ≤ 12% &nbsp;→&nbsp; 固定酸度 ≤ 8 &nbsp;→&nbsp; 品质得分 ≥ 6</p>
+        </div>
+
+        <!-- 可视化面板 -->
+        <div class="viz-panel" id="vizPanel">
+            <div class="decision-path">
+                <div class="node start" id="node-0">
+                    <span class="label">起点</span>
+                    <span class="condition">所有样本</span>
+                </div>
+                <div class="node" id="node-1">
+                    <span class="label">决策 1</span>
+                    <span class="condition">酒精度 ≤ 12%</span>
+                </div>
+                <div class="node" id="node-2">
+                    <span class="label">决策 2</span>
+                    <span class="condition">酸度 ≤ 8</span>
+                </div>
+                <div class="node" id="node-3">
+                    <span class="label">决策 3</span>
+                    <span class="condition">品质 ≥ 6</span>
+                </div>
+                <div class="node final" id="node-4">
+                    <span class="label">终点</span>
+                    <span class="condition">好酒 ✨</span>
+                </div>
+            </div>
+            
+            <div class="reject-zone" id="rejectZone">
+                ⬇ 淘汰区 (不符合条件的样本将落入此处)
+            </div>
+        </div>
+
+        <!-- 控制按钮 -->
+        <div class="controls">
+            <button class="btn-reset" onclick="resetSimulation()">↺ 重置 / 应用修改</button>
+            <button class="btn-primary" id="btnNext" onclick="nextStep()">开始决策 ▶</button>
+        </div>
+
+        <!-- 数据编辑表格 -->
+        <div class="data-panel">
+            <h3>📊 样本数据编辑器</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>名称</th>
+                        <th>酒精度 (%)</th>
+                        <th>固定酸度</th>
+                        <th>品质得分</th>
+                        <th>当前状态</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <!-- 数据行将通过JS生成 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // 1. 初始数据
+        const initialData = [
+            { id: 1, name: 'A', alcohol: 11.5, acidity: 7.2, quality: 7, color: '#e74c3c' },
+            { id: 2, name: 'B', alcohol: 13.0, acidity: 6.5, quality: 6, color: '#e67e22' },
+            { id: 3, name: 'C', alcohol: 10.5, acidity: 8.5, quality: 5, color: '#f1c40f' },
+            { id: 4, name: 'D', alcohol: 11.0, acidity: 7.0, quality: 8, color: '#2ecc71' },
+            { id: 5, name: 'E', alcohol: 14.2, acidity: 9.0, quality: 4, color: '#1abc9c' },
+            { id: 6, name: 'F', alcohol: 11.8, acidity: 7.8, quality: 6, color: '#3498db' },
+            { id: 7, name: 'G', alcohol: 12.5, acidity: 7.5, quality: 7, color: '#9b59b6' },
+            { id: 8, name: 'H', alcohol: 10.0, acidity: 6.0, quality: 5, color: '#34495e' },
+            { id: 9, name: 'I', alcohol: 11.2, acidity: 7.9, quality: 9, color: '#d35400' },
+            { id: 10, name: 'J', alcohol: 12.0, acidity: 8.1, quality: 6, color: '#7f8c8d' }
+        ];
+
+        // 状态管理
+        let wines = JSON.parse(JSON.stringify(initialData));
+        let currentStep = 0; // 0: Start, 1: At Alc Node, 2: At Acid Node, 3: At Qual Node, 4: Result
+        const maxSteps = 4;
+        
+        // DOM 元素
+        const vizPanel = document.getElementById('vizPanel');
+        const tableBody = document.getElementById('tableBody');
+        const btnNext = document.getElementById('btnNext');
+        const tooltip = document.getElementById('tooltip');
+        const rejectZone = document.getElementById('rejectZone');
+
+        // 初始化
+        function init() {
+            renderTable();
+            createDots();
+            updateDotPositions();
+            window.addEventListener('resize', updateDotPositions);
+        }
+
+        // 2. 创建可视化圆点
+        function createDots() {
+            // 清除旧点
+            document.querySelectorAll('.dot').forEach(el => el.remove());
+
+            wines.forEach(wine => {
+                const dot = document.createElement('div');
+                dot.className = 'dot';
+                dot.id = `dot-${wine.id}`;
+                dot.style.backgroundColor = wine.color;
+                dot.textContent = wine.name;
+                
+                // 鼠标悬停事件
+                dot.addEventListener('mouseenter', (e) => showTooltip(e, wine));
+                dot.addEventListener('mouseleave', hideTooltip);
+
+                vizPanel.appendChild(dot);
+            });
+        }
+
+        // 3. 核心逻辑：计算位置
+        function updateDotPositions() {
+            const nodes = [
+                document.getElementById('node-0'), // Start
+                document.getElementById('node-1'), // Alcohol Check
+                document.getElementById('node-2'), // Acidity Check
+                document.getElementById('node-3'), // Quality Check
+                document.getElementById('node-4')  // Good Wine
+            ];
+
+            const panelRect = vizPanel.getBoundingClientRect();
+            const rejectRect = rejectZone.getBoundingClientRect();
+
+            wines.forEach(wine => {
+                const dot = document.getElementById(`dot-${wine.id}`);
+                let targetNodeIndex = 0;
+                let isRejected = false;
+                let rejectStep = 0;
+
+                // 逻辑判断：根据当前步骤 currentStep 决定圆点应该在哪里
+                
+                // 步骤 0: 都在起点
+                if (currentStep === 0) {
+                    targetNodeIndex = 0;
+                } 
+                // 步骤 1: 移动到酒精度判断节点
+                else if (currentStep === 1) {
+                    targetNodeIndex = 1;
+                }
+                // 步骤 2: 
+                // 如果酒精度不合格，停留在节点1下方（淘汰）。
+                // 如果合格，移动到酸度节点。
+                else if (currentStep === 2) {
+                    if (wine.alcohol > 12) { isRejected = true; rejectStep = 1; targetNodeIndex = 1; }
+                    else { targetNodeIndex = 2; }
+                }
+                // 步骤 3:
+                // 之前淘汰的保持不动。
+                // 检查酸度：不合格淘汰，合格移动到品质节点。
+                else if (currentStep === 3) {
+                    if (wine.alcohol > 12) { isRejected = true; rejectStep = 1; targetNodeIndex = 1; }
+                    else if (wine.acidity > 8) { isRejected = true; rejectStep = 2; targetNodeIndex = 2; }
+                    else { targetNodeIndex = 3; }
+                }
+                // 步骤 4 (最终):
+                // 检查品质。
+                else if (currentStep === 4) {
+                    if (wine.alcohol > 12) { isRejected = true; rejectStep = 1; targetNodeIndex = 1; }
+                    else if (wine.acidity > 8) { isRejected = true; rejectStep = 2; targetNodeIndex = 2; }
+                    else if (wine.quality < 6) { isRejected = true; rejectStep = 3; targetNodeIndex = 3; }
+                    else { targetNodeIndex = 4; } // 好酒
+                }
+
+                // 获取目标节点的坐标
+                const targetNode = nodes[targetNodeIndex];
+                const nodeRect = targetNode.getBoundingClientRect();
+
+                // 计算相对于 vizPanel 的坐标
+                let top = nodeRect.top - panelRect.top + nodeRect.height / 2 - 12; // 居中
+                let left = nodeRect.left - panelRect.left + nodeRect.width / 2 - 12;
+
+                // 添加一点随机偏移，防止完全重叠
+                const offsetX = (Math.random() - 0.5) * 30;
+                const offsetY = (Math.random() - 0.5) * 30;
+
+                if (isRejected) {
+                    // 如果被淘汰，掉落到底部区域
+                    // 横向位置对应被淘汰的节点，纵向位置在底部
+                    top = panelRect.height - 60 + offsetY; // 落入底部区域
+                    left = left + offsetX;
+                    dot.style.opacity = '0.6';
+                    dot.style.filter = 'grayscale(80%)';
+                } else {
+                    // 正常流转
+                    top += offsetY;
+                    left += offsetX;
+                    dot.style.opacity = '1';
+                    dot.style.filter = 'none';
+                }
+
+                dot.style.top = `${top}px`;
+                dot.style.left = `${left}px`;
+            });
+            
+            updateTableStatus();
+        }
+
+        // 4. 控制流程
+        function nextStep() {
+            if (currentStep < maxSteps) {
+                currentStep++;
+                updateDotPositions();
+                
+                // 更新按钮文本
+                if (currentStep === 1) btnNext.innerText = "下一步: 筛选酒精度 ▶";
+                else if (currentStep === 2) btnNext.innerText = "下一步: 筛选酸度 ▶";
+                else if (currentStep === 3) btnNext.innerText = "下一步: 筛选品质 ▶";
+                else if (currentStep === 4) {
+                    btnNext.innerText = "决策完成";
+                    btnNext.disabled = true;
+                }
+            }
+        }
+
+        function resetSimulation() {
+            currentStep = 0;
+            btnNext.disabled = false;
+            btnNext.innerText = "开始决策 ▶";
+            
+            // 从表格读取最新数据
+            const rows = tableBody.querySelectorAll('tr');
+            rows.forEach((row, index) => {
+                const inputs = row.querySelectorAll('input');
+                wines[index].alcohol = parseFloat(inputs[0].value);
+                wines[index].acidity = parseFloat(inputs[1].value);
+                wines[index].quality = parseFloat(inputs[2].value);
+            });
+
+            // 重新生成点（为了重置样式如灰度）
+            createDots();
+            updateDotPositions();
+        }
+
+        // 5. 表格渲染与更新
+        function renderTable() {
+            tableBody.innerHTML = '';
+            wines.forEach(wine => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${wine.id}</td>
+                    <td><span style="color:${wine.color}">●</span> ${wine.name}</td>
+                    <td><input type="number" step="0.1" value="${wine.alcohol}"></td>
+                    <td><input type="number" step="0.1" value="${wine.acidity}"></td>
+                    <td><input type="number" step="1" value="${wine.quality}"></td>
+                    <td id="status-${wine.id}"><span class="status-badge status-pending">待定</span></td>
+                `;
+                tableBody.appendChild(tr);
+            });
+        }
+
+        function updateTableStatus() {
+            wines.forEach(wine => {
+                const statusCell = document.getElementById(`status-${wine.id}`);
+                let statusHtml = '';
+                
+                if (currentStep === 0) {
+                    statusHtml = '<span class="status-badge status-pending">待定</span>';
+                } else {
+                    // 判断当前状态
+                    let rejectedReason = '';
+                    if (currentStep >= 2 && wine.alcohol > 12) rejectedReason = '酒精度过高';
+                    else if (currentStep >= 3 && wine.acidity > 8) rejectedReason = '酸度过高';
+                    else if (currentStep >= 4 && wine.quality < 6) rejectedReason = '品质不足';
+
+                    if (rejectedReason) {
+                        statusHtml = `<span class="status-badge status-rejected">淘汰: ${rejectedReason}</span>`;
+                    } else if (currentStep === 4) {
+                        statusHtml = '<span class="status-badge status-good">好酒!</span>';
+                    } else {
+                        statusHtml = '<span class="status-badge status-pending">进行中...</span>';
+                    }
+                }
+                statusCell.innerHTML = statusHtml;
+            });
+        }
+
+        // Tooltip 工具
+        function showTooltip(e, wine) {
+            tooltip.innerHTML = `
+                <strong>${wine.name}</strong><br>
+                酒精度: ${wine.alcohol}%<br>
+                酸度: ${wine.acidity}<br>
+                品质: ${wine.quality}
+            `;
+            tooltip.style.left = e.pageX + 15 + 'px';
+            tooltip.style.top = e.pageY + 15 + 'px';
+            tooltip.style.opacity = 1;
+        }
+
+        function hideTooltip() {
+            tooltip.style.opacity = 0;
+        }
+
+        // 启动
+        init();
+
+    </script>
+</body>
+</html>
+```
